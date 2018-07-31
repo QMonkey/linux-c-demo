@@ -1,3 +1,6 @@
+/*
+ * multi process version blocking server
+ */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -8,6 +11,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static const int DEFAULT_BUFFER_SIZE = 1024;
@@ -29,6 +33,46 @@ static void sigkill_handler(int sig)
 	stop_flag = 1;
 }
 
+int handler_request(int client_fd)
+{
+	char buffer[DEFAULT_BUFFER_SIZE];
+	int size;
+	int res;
+
+	while ((size = read(client_fd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
+		if (size == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
+
+			perror("Fail to recv from client");
+			return errno;
+		}
+
+		write(STDOUT_FILENO, buffer, size);
+		if (size >= 4 &&
+		    memcmp("\r\n\r\n", buffer + size - 4, 4) == 0) {
+			break;
+		}
+	}
+
+	size =
+	    snprintf(buffer, DEFAULT_BUFFER_SIZE, "HTTP/1.1 200 OK\r\n"
+						  "Content-Length: 21\r\n\r\n"
+						  "<h1>Hello world!</h1>");
+	int wsize = write(client_fd, buffer, size);
+	if (wsize == -1) {
+		perror("Fail to send to client.");
+		return errno;
+	}
+
+	if (size != wsize) {
+		fprintf(stderr, "Fail to send all data to client");
+	}
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int res;
@@ -44,6 +88,13 @@ int main(int argc, char *argv[])
 	res = inet_aton("0.0.0.0", &bind_addr.sin_addr);
 	if (res == 0) {
 		perror("Fail to parse net address");
+		exit(-1);
+	}
+
+	/* make port reusable */
+	int on = 1;
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
+		perror("setsockopt");
 		exit(-1);
 	}
 
@@ -92,54 +143,32 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 
-		pid = fork();
-		if (pid < 0) {
+		if ((pid = fork()) < 0) {
 			perror("fork error");
 			exit(-1);
-		} else if (pid > 0) {
-			// 父进程，继续
-			continue;
-		} else {
-			char buffer[DEFAULT_BUFFER_SIZE];
-			int size;
-			while ((size = read(cfd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
-				if (size == -1) {
-					if (errno == EINTR) {
-						continue;
-					}
-
-					perror("Fail to recv from client");
-					goto END_REQUEST;
-				}
-
-				write(STDOUT_FILENO, buffer, size);
-				if (size >= 4 &&
-						memcmp("\r\n\r\n", buffer + size - 4, 4) == 0) {
-					break;
-				}
+		} else if (pid == 0) {
+			// first child
+			if ((pid = fork()) < 0) {
+				perror("fork error");
+			} else if (pid > 0) {
+				// parent for second fork exit first
+				exit(0);
 			}
 
-			size = snprintf(buffer, DEFAULT_BUFFER_SIZE,
-					"HTTP/1.1 200 OK\r\n"
-					"Content-Length: 21\r\n\r\n"
-					"<h1>Hello world!</h1>");
-			int wsize = write(cfd, buffer, size);
-			if (wsize == -1) {
-				perror("Fail to send to client.");
-				goto END_REQUEST;
-			}
-
-			if (size != wsize) {
-				fprintf(stderr, "Fail to send all data to client");
+			// second child, handle real request
+			if (handler_request(cfd) == 0) {
+				return 0;
+			} else {
+				perror("handler request");
+				exit(-1);
 			}
 		}
 
-
-END_REQUEST:;
-	    res = close(cfd);
-	    if (res == -1) {
-		    perror("Fail to close client socket");
-	    }
+		// first parent, wait for child process to exit
+		if (waitpid(pid, NULL, 0) != pid) {
+			perror("waitpid error");
+			exit(-1);
+		}
 	}
 
 	msg = "Stop listening!\n";
