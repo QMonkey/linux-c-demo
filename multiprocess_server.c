@@ -14,6 +14,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#define LISTENING_PORT 9999
+
 static const int DEFAULT_BUFFER_SIZE = 1024;
 static const int DEFAULT_BACKLOG = 1024;
 
@@ -33,6 +35,18 @@ static void sigkill_handler(int sig)
 	stop_flag = 1;
 }
 
+static void sigchld_handler(int sig)
+{
+	int status;
+	while (waitpid(-1, &status, WNOHANG) > 0)
+		;
+}
+
+/*
+ * handle request by simply echo what client send
+ * @param 	client_fd
+ * @return 	int
+*/
 int handler_request(int client_fd)
 {
 	char buffer[DEFAULT_BUFFER_SIZE];
@@ -84,7 +98,7 @@ int main(int argc, char *argv[])
 
 	struct sockaddr_in bind_addr;
 	bind_addr.sin_family = AF_INET;
-	bind_addr.sin_port = htons(9999);
+	bind_addr.sin_port = htons(LISTENING_PORT);
 	res = inet_aton("0.0.0.0", &bind_addr.sin_addr);
 	if (res == 0) {
 		perror("Fail to parse net address");
@@ -113,6 +127,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in peer_addr;
 	socklen_t addr_len = sizeof(peer_addr);
 
+	// register SIGTERM handler
 	struct sigaction term_action;
 	term_action.sa_handler = sigterm_handler;
 	term_action.sa_flags = SA_NODEFER;
@@ -121,12 +136,22 @@ int main(int argc, char *argv[])
 		perror("Fail to catch SIGTERM signal.");
 	}
 
+	// register SIGKILL handler
 	struct sigaction kill_action;
 	kill_action.sa_handler = sigkill_handler;
 	kill_action.sa_flags = SA_NODEFER;
 	res = sigaction(SIGKILL, &kill_action, NULL);
 	if (res == -1) {
 		perror("Oh! Can not catch SIGKILL signal. :) ");
+	}
+
+	// register SIGCHLD handler
+	struct sigaction chld_action;
+	chld_action.sa_handler = sigchld_handler;
+	chld_action.sa_flags = SA_NODEFER;
+	res = sigaction(SIGCHLD, &chld_action, NULL);
+	if (res == -1) {
+		perror("Oh! Can not catch SIGCHLD signal. :) ");
 	}
 
 	char *msg = "Listening...\n\n";
@@ -147,27 +172,12 @@ int main(int argc, char *argv[])
 			perror("fork error");
 			exit(-1);
 		} else if (pid == 0) {
-			// first child
-			if ((pid = fork()) < 0) {
-				perror("fork error");
-			} else if (pid > 0) {
-				// parent for second fork exit first
-				exit(0);
-			}
-
-			// second child, handle real request
 			if (handler_request(cfd) == 0) {
 				return 0;
 			} else {
 				perror("handler request");
 				exit(-1);
 			}
-		}
-
-		// first parent, wait for child process to exit
-		if (waitpid(pid, NULL, 0) != pid) {
-			perror("waitpid error");
-			exit(-1);
 		}
 	}
 
