@@ -53,7 +53,7 @@ static void sigchld_handler(int sig)
  * @param 	client_fd
  * @return 	int
 */
-int handler_request(int client_fd)
+int handle_request(int client_fd)
 {
 	char buffer[DEFAULT_BUFFER_SIZE];
 	int size;
@@ -89,12 +89,6 @@ int handler_request(int client_fd)
 
 	if (size != wsize) {
 		fprintf(stderr, "Fail to send all data to client");
-	}
-
-	res = close(client_fd);
-	if (res == -1) {
-		perror("Fail to close client socket");
-		return res;
 	}
 
 	return 0;
@@ -177,15 +171,24 @@ int main(int argc, char *argv[])
 				continue;
 			}
 
-			perror("Fail to accept client request");
+			perror("Fail to accept client request.");
 			exit(-1);
 		}
 
-		if ((pid = fork()) < 0) {
+		if ((pid = fork()) != -1) {
 			perror("Fail to fork");
 			exit(-1);
 		} else if (pid == 0) {
-			return handler_request(cfd);
+			int handle_res = 0;
+			handle_res = handle_request(cfd);
+
+			res = close(cfd);
+			if (res == -1) {
+				perror("Fail to close client socket.");
+				return res;
+			}
+
+			return handle_res;
 		}
 	}
 
