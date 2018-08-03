@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+static const int LISTEN_PORT = 9999;
 static const int DEFAULT_BUFFER_SIZE = 1024;
 static const int DEFAULT_BACKLOG = 1024;
 
@@ -22,16 +23,8 @@ static void sigterm_handler(int sig)
 	stop_flag = 1;
 }
 
-static void sigkill_handler(int sig)
-{
-	char *msg = "Just for fun, I will still die. :)\n";
-	write(STDOUT_FILENO, msg, strlen(msg));
-	stop_flag = 1;
-}
-
 int main(int argc, char *argv[])
 {
-	int res;
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		perror("Fail to create socket");
@@ -40,21 +33,18 @@ int main(int argc, char *argv[])
 
 	struct sockaddr_in bind_addr;
 	bind_addr.sin_family = AF_INET;
-	bind_addr.sin_port = htons(9999);
-	res = inet_aton("0.0.0.0", &bind_addr.sin_addr);
-	if (res == 0) {
+	bind_addr.sin_port = htons(LISTEN_PORT);
+	if (inet_aton("0.0.0.0", &bind_addr.sin_addr) == 0) {
 		perror("Fail to parse net address");
 		exit(-1);
 	}
 
-	res = bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr));
-	if (res == -1) {
+	if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == -1) {
 		perror("Fail to bind");
 		exit(-1);
 	}
 
-	res = listen(fd, DEFAULT_BACKLOG);
-	if (res == -1) {
+	if (listen(fd, DEFAULT_BACKLOG) == -1) {
 		perror("Fail to listen");
 		exit(-1);
 	}
@@ -65,17 +55,8 @@ int main(int argc, char *argv[])
 	struct sigaction term_action;
 	term_action.sa_handler = sigterm_handler;
 	term_action.sa_flags = SA_NODEFER;
-	res = sigaction(SIGTERM, &term_action, NULL);
-	if (res == -1) {
+	if (sigaction(SIGTERM, &term_action, NULL) == -1) {
 		perror("Fail to catch SIGTERM signal.");
-	}
-
-	struct sigaction kill_action;
-	kill_action.sa_handler = sigkill_handler;
-	kill_action.sa_flags = SA_NODEFER;
-	res = sigaction(SIGKILL, &kill_action, NULL);
-	if (res == -1) {
-		perror("Oh! Can not catch SIGKILL signal. :) ");
 	}
 
 	char *msg = "Listening...\n\n";
@@ -125,8 +106,7 @@ int main(int argc, char *argv[])
 		}
 
 	END_REQUEST:;
-		res = close(cfd);
-		if (res == -1) {
+		if (close(cfd) == -1) {
 			perror("Fail to close client socket");
 		}
 	}
@@ -134,8 +114,7 @@ int main(int argc, char *argv[])
 	msg = "Stop listening!\n";
 	write(STDOUT_FILENO, msg, strlen(msg));
 
-	res = close(fd);
-	if (res == -1) {
+	if (close(fd) == -1) {
 		perror("Fail to close socket");
 		exit(-1);
 	}
