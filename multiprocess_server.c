@@ -28,13 +28,9 @@ static void sigterm_handler(int sig)
 	stop_flag = 1;
 }
 
-static void sigkill_handler(int sig)
-{
-	char *msg = "Just for fun, I will still die. :)\n";
-	write(STDOUT_FILENO, msg, strlen(msg));
-	stop_flag = 1;
-}
-
+/*
+ * wait for child process to exit
+ */
 static void sigchld_handler(int sig)
 {
 	int status = 0;
@@ -143,15 +139,6 @@ int main(int argc, char *argv[])
 		perror("Fail to catch SIGTERM signal.");
 	}
 
-	// register SIGKILL handler
-	struct sigaction kill_action;
-	kill_action.sa_handler = sigkill_handler;
-	kill_action.sa_flags = SA_NODEFER;
-	res = sigaction(SIGKILL, &kill_action, NULL);
-	if (res == -1) {
-		perror("Fail to catch SIGKILL signal.");
-	}
-
 	// register SIGCHLD handler
 	struct sigaction chld_action;
 	chld_action.sa_handler = sigchld_handler;
@@ -175,7 +162,7 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 
-		if ((pid = fork()) != -1) {
+		if ((pid = fork()) == -1) {
 			perror("Fail to fork");
 			exit(-1);
 		} else if (pid == 0) {
@@ -190,6 +177,13 @@ int main(int argc, char *argv[])
 
 			return handle_res;
 		}
+
+		/*
+		 * Child process and parent process share the socket fd.
+		 * Parent process should close the fd, leave the child process
+		 * to handle request.
+		 */
+		close(cfd);
 	}
 
 	msg = "Stop listening!\n";
