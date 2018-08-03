@@ -14,10 +14,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define LISTENING_PORT 9999
-
 static const int DEFAULT_BUFFER_SIZE = 1024;
 static const int DEFAULT_BACKLOG = 1024;
+static const int LISTENING_PORT = 9999;
 
 static int stop_flag = 0;
 
@@ -29,15 +28,13 @@ static void sigterm_handler(int sig)
 }
 
 /*
- * wait for child process to exit
+ * wait for child process to change state
  */
 static void sigchld_handler(int sig)
 {
 	int status = 0;
-	int res = 0;
 	do {
-		res = waitpid(-1, &status, WNOHANG);
-		if (res == -1) {
+		if (waitpid(-1, &status, WNOHANG) == -1) {
 			perror("Fail to wait child process");
 			exit(-1);
 		}
@@ -53,7 +50,6 @@ int handle_request(int client_fd)
 {
 	char buffer[DEFAULT_BUFFER_SIZE];
 	int size;
-	int res;
 
 	while ((size = read(client_fd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
 		if (size == -1) {
@@ -92,7 +88,6 @@ int handle_request(int client_fd)
 
 int main(int argc, char *argv[])
 {
-	int res;
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		perror("Fail to create socket");
@@ -102,8 +97,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in bind_addr;
 	bind_addr.sin_family = AF_INET;
 	bind_addr.sin_port = htons(LISTENING_PORT);
-	res = inet_aton("0.0.0.0", &bind_addr.sin_addr);
-	if (res == 0) {
+	if (inet_aton("0.0.0.0", &bind_addr.sin_addr) == 0) {
 		perror("Fail to parse net address");
 		exit(-1);
 	}
@@ -115,14 +109,12 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	res = bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr));
-	if (res == -1) {
+	if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == -1) {
 		perror("Fail to bind");
 		exit(-1);
 	}
 
-	res = listen(fd, DEFAULT_BACKLOG);
-	if (res == -1) {
+	if (listen(fd, DEFAULT_BACKLOG) == -1) {
 		perror("Fail to listen");
 		exit(-1);
 	}
@@ -134,8 +126,7 @@ int main(int argc, char *argv[])
 	struct sigaction term_action;
 	term_action.sa_handler = sigterm_handler;
 	term_action.sa_flags = SA_NODEFER;
-	res = sigaction(SIGTERM, &term_action, NULL);
-	if (res == -1) {
+	if (sigaction(SIGTERM, &term_action, NULL) == -1) {
 		perror("Fail to catch SIGTERM signal.");
 	}
 
@@ -143,14 +134,12 @@ int main(int argc, char *argv[])
 	struct sigaction chld_action;
 	chld_action.sa_handler = sigchld_handler;
 	chld_action.sa_flags = SA_NODEFER;
-	res = sigaction(SIGCHLD, &chld_action, NULL);
-	if (res == -1) {
+	if (sigaction(SIGCHLD, &chld_action, NULL) == -1) {
 		perror("Fail to catch SIGCHLD signal.");
 	}
 
 	char *msg = "Listening...\n\n";
 	write(STDOUT_FILENO, msg, strlen(msg));
-	pid_t pid = 0;
 	while (!stop_flag) {
 		int cfd = accept(fd, (struct sockaddr *)&peer_addr, &addr_len);
 		if (cfd == -1) {
@@ -162,17 +151,19 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 
+		pid_t pid = 0;
 		if ((pid = fork()) == -1) {
 			perror("Fail to fork");
 			exit(-1);
-		} else if (pid == 0) {
+		}
+
+		if (pid == 0) {
 			int handle_res = 0;
 			handle_res = handle_request(cfd);
 
-			res = close(cfd);
-			if (res == -1) {
+			if (close(cfd) == -1) {
 				perror("Fail to close client socket.");
-				return res;
+				exit(-1);
 			}
 
 			return handle_res;
@@ -189,8 +180,7 @@ int main(int argc, char *argv[])
 	msg = "Stop listening!\n";
 	write(STDOUT_FILENO, msg, strlen(msg));
 
-	res = close(fd);
-	if (res == -1) {
+	if (close(fd) == -1) {
 		perror("Fail to close socket");
 		exit(-1);
 	}
