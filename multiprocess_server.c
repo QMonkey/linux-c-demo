@@ -102,13 +102,6 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
-	/* make port reusable */
-	int on = 1;
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
-		perror("setsockopt");
-		exit(-1);
-	}
-
 	if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == -1) {
 		perror("Fail to bind");
 		exit(-1);
@@ -174,7 +167,10 @@ int main(int argc, char *argv[])
 		 * Parent process should close the fd, leave the child process
 		 * to handle request.
 		 */
-		close(cfd);
+		if (close(cfd) == -1) {
+			perror("Fail to close client socket.");
+			exit(-1);
+		}
 	}
 
 	msg = "Stop listening!\n";
