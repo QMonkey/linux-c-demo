@@ -37,9 +37,15 @@ static void sigkill_handler(int sig)
 
 static void sigchld_handler(int sig)
 {
-	int status;
-	while (waitpid(-1, &status, WNOHANG) > 0)
-		;
+	int status = 0;
+	int res = 0;
+	do {
+		res = waitpid(-1, &status, WNOHANG);
+		if (res == -1) {
+			perror("Fail to wait child process");
+			exit(-1);
+		}
+	} while (!WIFEXITED(status) && !WIFSIGNALED(status));
 }
 
 /*
@@ -74,6 +80,7 @@ int handler_request(int client_fd)
 	    snprintf(buffer, DEFAULT_BUFFER_SIZE, "HTTP/1.1 200 OK\r\n"
 						  "Content-Length: 21\r\n\r\n"
 						  "<h1>Hello world!</h1>");
+
 	int wsize = write(client_fd, buffer, size);
 	if (wsize == -1) {
 		perror("Fail to send to client.");
@@ -82,6 +89,12 @@ int handler_request(int client_fd)
 
 	if (size != wsize) {
 		fprintf(stderr, "Fail to send all data to client");
+	}
+
+	res = close(client_fd);
+	if (res == -1) {
+		perror("Fail to close client socket");
+		return res;
 	}
 
 	return 0;
@@ -142,7 +155,7 @@ int main(int argc, char *argv[])
 	kill_action.sa_flags = SA_NODEFER;
 	res = sigaction(SIGKILL, &kill_action, NULL);
 	if (res == -1) {
-		perror("Oh! Can not catch SIGKILL signal. :) ");
+		perror("Fail to catch SIGKILL signal.");
 	}
 
 	// register SIGCHLD handler
@@ -151,7 +164,7 @@ int main(int argc, char *argv[])
 	chld_action.sa_flags = SA_NODEFER;
 	res = sigaction(SIGCHLD, &chld_action, NULL);
 	if (res == -1) {
-		perror("Oh! Can not catch SIGCHLD signal. :) ");
+		perror("Fail to catch SIGCHLD signal.");
 	}
 
 	char *msg = "Listening...\n\n";
@@ -169,15 +182,10 @@ int main(int argc, char *argv[])
 		}
 
 		if ((pid = fork()) < 0) {
-			perror("fork error");
+			perror("Fail to fork");
 			exit(-1);
 		} else if (pid == 0) {
-			if (handler_request(cfd) == 0) {
-				return 0;
-			} else {
-				perror("handler request");
-				exit(-1);
-			}
+			return handler_request(cfd);
 		}
 	}
 
