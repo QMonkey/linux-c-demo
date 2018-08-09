@@ -29,20 +29,6 @@ static void sigterm_handler(int sig)
 }
 
 /*
- * wait for child process to change state
- */
-static void sigchld_handler(int sig)
-{
-	int status = 0;
-	do {
-		if (waitpid(-1, &status, WNOHANG) == -1) {
-			perror("Fail to wait child process");
-			exit(-1);
-		}
-	} while (!WIFEXITED(status) && !WIFSIGNALED(status));
-}
-
-/*
  * handle request by simply echo what client send
  * @param 	client_fd
  * @return 	int
@@ -130,14 +116,6 @@ int main(int argc, char *argv[])
 	term_action.sa_flags = SA_NODEFER;
 	if (sigaction(SIGTERM, &term_action, NULL) == -1) {
 		perror("Fail to catch SIGTERM signal.");
-	}
-
-	// register SIGCHLD handler
-	struct sigaction chld_action;
-	chld_action.sa_handler = sigchld_handler;
-	chld_action.sa_flags = SA_NODEFER;
-	if (sigaction(SIGCHLD, &chld_action, NULL) == -1) {
-		perror("Fail to catch SIGCHLD signal.");
 	}
 
 	char *msg = "Listening...\n\n";
