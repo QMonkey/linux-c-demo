@@ -33,10 +33,12 @@ static void sigterm_handler(int sig)
  * @param 	client_fd
  * @return 	int
 */
-int handle_request(int client_fd)
+int handle_request(void *arg)
 {
 	char buffer[DEFAULT_BUFFER_SIZE];
 	int size;
+	int client_fd = *(int *)arg;
+	free(arg);
 
 	while ((size = read(client_fd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
 		if (size == -1) {
@@ -118,9 +120,9 @@ int main(int argc, char *argv[])
 	char *msg = "Listening...\n\n";
 	write(STDOUT_FILENO, msg, strlen(msg));
 	while (!stop_flag) {
-		int cfd = 0;
-		cfd = accept(fd, (struct sockaddr *)&peer_addr, &addr_len);
-		if (cfd == -1) {
+		int *cfd = (int *)malloc(sizeof(int));
+		*cfd = accept(fd, (struct sockaddr *)&peer_addr, &addr_len);
+		if (*cfd == -1) {
 			if (errno == EINTR) {
 				continue;
 			}
@@ -131,7 +133,7 @@ int main(int argc, char *argv[])
 
 		pthread_t t_id;
 		if (pthread_create(&t_id, NULL, (void *)handle_request,
-				   (void *)(long)cfd) != 0) {
+				   (void *)cfd) != 0) {
 			perror("Fail to create thread.");
 			exit(-1);
 		}
