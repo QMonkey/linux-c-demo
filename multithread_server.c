@@ -33,12 +33,12 @@ static void sigterm_handler(int sig)
  * @param 	client_fd
  * @return 	int
 */
-int handle_request(void *arg)
+void *handle_request(void *arg)
 {
 	char buffer[DEFAULT_BUFFER_SIZE];
 	int size;
-	int client_fd = *(int *)arg;
-	free(arg);
+	int client_fd = (int)(long)arg;
+	char *ret;
 
 	while ((size = read(client_fd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
 		if (size == -1) {
@@ -47,7 +47,7 @@ int handle_request(void *arg)
 			}
 
 			perror("Fail to recv from client");
-			return errno;
+			goto END_REQUEST;
 		}
 
 		write(STDOUT_FILENO, buffer, size);
@@ -65,7 +65,7 @@ int handle_request(void *arg)
 	int wsize = write(client_fd, buffer, size);
 	if (wsize == -1) {
 		perror("Fail to send to client.");
-		return errno;
+		goto END_REQUEST;
 	}
 
 	if (size != wsize) {
@@ -74,10 +74,14 @@ int handle_request(void *arg)
 
 	if (close(client_fd) == -1) {
 		perror("Fail to close client.");
-		exit(-1);
+		goto END_REQUEST;
 	}
 
-	return 0;
+	return ret;
+
+END_REQUEST:;
+	*ret = errno;
+	return ret;
 }
 
 int main(int argc, char *argv[])
@@ -132,8 +136,8 @@ int main(int argc, char *argv[])
 		}
 
 		pthread_t t_id;
-		if (pthread_create(&t_id, NULL, (void *)handle_request,
-				   (void *)cfd) != 0) {
+		if (pthread_create(&t_id, NULL, handle_request,
+				   (void *)(long)*cfd) != 0) {
 			perror("Fail to create thread.");
 			exit(-1);
 		}
