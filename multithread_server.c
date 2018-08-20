@@ -38,7 +38,8 @@ void *handle_request(void *arg)
 	char buffer[DEFAULT_BUFFER_SIZE];
 	int size;
 	int client_fd = (int)(long)arg;
-	char *ret;
+	char *ret = (char *)malloc(sizeof(char *));
+	*ret = 0;
 
 	while ((size = read(client_fd, buffer, DEFAULT_BUFFER_SIZE)) != 0) {
 		if (size == -1) {
