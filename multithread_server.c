@@ -73,14 +73,12 @@ void *handle_request(void *arg)
 		fprintf(stderr, "Fail to send all data to client");
 	}
 
+	goto END_REQUEST;
+
+END_REQUEST:
 	if (close(client_fd) == -1) {
 		perror("Fail to close client.");
-		goto END_REQUEST;
 	}
-
-	return ret;
-
-END_REQUEST:;
 	ret = (void *)(long)errno;
 	return ret;
 }
